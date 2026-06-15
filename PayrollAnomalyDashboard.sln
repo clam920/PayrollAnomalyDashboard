@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Payroll.Domain", "Payroll.D
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Payroll.API", "Payroll.API\Payroll.API.csproj", "{08FBB443-4E57-4B1C-809B-DB35F480558E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Payroll.Domain.Tests", "Payroll.Domain.Tests\Payroll.Domain.Tests.csproj", "{D45A3C0B-38BE-4BE3-BDB2-C7449D0643D8}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -24,5 +26,9 @@ Global
 		{08FBB443-4E57-4B1C-809B-DB35F480558E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{08FBB443-4E57-4B1C-809B-DB35F480558E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{08FBB443-4E57-4B1C-809B-DB35F480558E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D45A3C0B-38BE-4BE3-BDB2-C7449D0643D8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D45A3C0B-38BE-4BE3-BDB2-C7449D0643D8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D45A3C0B-38BE-4BE3-BDB2-C7449D0643D8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D45A3C0B-38BE-4BE3-BDB2-C7449D0643D8}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
