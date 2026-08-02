@@ -1,13 +1,36 @@
+using Microsoft.EntityFrameworkCore;
+using Payroll.Application.Commands;
+using Payroll.Application.Interfaces;
+using Payroll.Infrastructure.Data;
+using Payroll.Infrastructure.Repositories;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+// 1. Configure the SQLite Database
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlite("Data Source=payroll.db"));
+
+// 2. Register the Repository (Scoped means one instance per HTTP request)
+builder.Services.AddScoped<ITimesheetRepository, TimesheetRepository>();
+
+// 3. Register MediatR
+// This tells MediatR to scan the assembly (project) where SubmitTimesheetCommand lives and register all handlers
+builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(SubmitTimesheetCommand).Assembly));
+
+// 4. Add Swagger for easy API testing
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// 5. Ensure the database is created (Do not use this in production, but great for portfolios!)
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    dbContext.Database.EnsureCreated();
+}
+
+// Enable Swagger UI
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -16,29 +39,24 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+// --- API ENDPOINTS ---
 
-app.MapGet("/weatherforecast", () =>
+// The Endpoint: POST /api/timesheets
+app.MapPost("/api/timesheets", async (SubmitTimesheetCommand command, MediatR.IMediator mediator) =>
 {
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast")
-.WithOpenApi();
+    try
+    {
+        // Hand the command off to MediatR
+        var timesheetId = await mediator.Send(command);
+        
+        // Return a 201 Created status with the new ID
+        return Results.Created($"/api/timesheets/{timesheetId}", new { Id = timesheetId });
+    }
+    catch (ArgumentException ex)
+    {
+        // If the Domain rules reject the data (e.g., negative hours), return a 400 Bad Request
+        return Results.BadRequest(new { Error = ex.Message });
+    }
+});
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
