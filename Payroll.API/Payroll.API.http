@@ -1,6 +1,19 @@
 @Payroll.API_HostAddress = http://localhost:5092
 
-GET {{Payroll.API_HostAddress}}/weatherforecast/
-Accept: application/json
+### Create an employee
+POST {{Payroll.API_HostAddress}}/api/employees
+Content-Type: application/json
 
-###
+{
+  "firstName": "Jane",
+  "lastName": "Doe",
+  "hourlyRate": 25.50
+}
+### Submit a timesheet (replace employeeId with the ID from above)
+POST {{Payroll.API_HostAddress}}/api/timesheets
+Content-Type: application/json
+{
+  "employeeId": "00000000-0000-0000-0000-000000000000",
+  "workDate": "2026-08-01T00:00:00Z",
+  "hoursWorked": 8
+}

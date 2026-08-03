@@ -12,6 +12,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 // 2. Register the Repository (Scoped means one instance per HTTP request)
 builder.Services.AddScoped<ITimesheetRepository, TimesheetRepository>();
+builder.Services.AddScoped<IEmployeeRepository, EmployeeRepository>();
 
 // 3. Register MediatR
 // This tells MediatR to scan the assembly (project) where SubmitTimesheetCommand lives and register all handlers
@@ -40,6 +41,18 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 // --- API ENDPOINTS ---
+app.MapPost("/api/employees", async (CreateEmployeeCommand command, MediatR.IMediator mediator) =>
+{
+    try
+    {
+        var employeeId = await mediator.Send(command);
+        return Results.Created($"/api/employees/{employeeId}", new { Id = employeeId });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { Error = ex.Message });
+    }
+});
 
 // The Endpoint: POST /api/timesheets
 app.MapPost("/api/timesheets", async (SubmitTimesheetCommand command, MediatR.IMediator mediator) =>
