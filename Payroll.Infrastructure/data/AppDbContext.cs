@@ -11,6 +11,7 @@ public class AppDbContext : DbContext
     // DbSets represent your actual database tables
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<Timesheet> Timesheets => Set<Timesheet>();
+    public DbSet<Anomaly> Anomalies => Set<Anomaly>();
 
     // Fluent API: This is where you configure database constraints (max lengths, required fields) 
     // without polluting your clean Domain entities with database-specific code.
@@ -18,5 +19,6 @@ public class AppDbContext : DbContext
     {
         modelBuilder.Entity<Employee>().HasKey(e => e.Id);
         modelBuilder.Entity<Timesheet>().HasKey(t => t.Id);
+        modelBuilder.Entity<Anomaly>().HasKey(a => a.Id);
     }
 }
