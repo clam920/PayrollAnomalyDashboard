@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Payroll.Application.Interfaces;
@@ -34,5 +36,14 @@ public class TimesheetRepository : ITimesheetRepository
     {
         // Actually executes the SQL INSERT/UPDATE commands against the database
         await _context.SaveChangesAsync();
+    }
+
+    public async Task<List<Timesheet>> GetRecentByEmployeeIdAsync(Guid employeeId, int lookbackDays = 30)
+    {
+        var cutoff = DateTime.UtcNow.Date.AddDays(-lookbackDays);
+
+        return await _context.Timesheets
+            .Where(t => t.EmployeeId == employeeId && t.WorkDate >= cutoff)
+            .ToListAsync();
     }
 }
