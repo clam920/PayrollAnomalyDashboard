@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Payroll.Application.Commands;
 using Payroll.Application.Interfaces;
+using Payroll.Domain.Services;
 using Payroll.Infrastructure.Data;
 using Payroll.Infrastructure.Repositories;
 
@@ -13,6 +14,12 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // 2. Register the Repository (Scoped means one instance per HTTP request)
 builder.Services.AddScoped<ITimesheetRepository, TimesheetRepository>();
 builder.Services.AddScoped<IEmployeeRepository, EmployeeRepository>();
+builder.Services.AddScoped<IAnomalyRepository, AnomalyRepository>();
+
+// 2b. Register the anomaly detection domain service. This is stateless (no
+// fields, no DB access) so it's safe - and cheaper - as a Singleton rather
+// than Scoped like the repositories above.
+builder.Services.AddSingleton<IAnomalyDetectionService, TimesheetAnomalyDetector>();
 
 // 3. Register MediatR
 // This tells MediatR to scan the assembly (project) where SubmitTimesheetCommand lives and register all handlers
@@ -60,10 +67,11 @@ app.MapPost("/api/timesheets", async (SubmitTimesheetCommand command, MediatR.IM
     try
     {
         // Hand the command off to MediatR
-        var timesheetId = await mediator.Send(command);
+        var result = await mediator.Send(command);
         
-        // Return a 201 Created status with the new ID
-        return Results.Created($"/api/timesheets/{timesheetId}", new { Id = timesheetId });
+        // Return a 201 Created status with the new Id and anomaly count.
+        // e.g. { "timesheetId": "...", "anomalyCount": 1 }
+        return Results.Created($"/api/timesheets/{result.TimesheetId}", result);
     }
     catch (ArgumentException ex)
     {
