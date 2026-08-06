@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Payroll.Application.Interfaces;
@@ -15,6 +16,10 @@ public class EmployeeRepository : IEmployeeRepository
     public async Task<Employee?> GetByIdAsync(Guid id)
     {
         return await _context.Employees.FindAsync(id);
+    }
+    public async Task<List<Employee>> GetAllAsync()
+    {
+        return await _context.Employees.ToListAsync();
     }
     public async Task AddAsync(Employee employee)
     {
