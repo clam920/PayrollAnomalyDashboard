@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -32,13 +33,18 @@ public class AnomalyRepository : IAnomalyRepository
     {
         var query = _context.Anomalies.AsQueryable();
 
-        // AnomalySeverity is declared Info < Warning < Critical, so ">="
-        // here really does mean "at least this urgent".
         if (minSeverity is not null)
             query = query.Where(a => a.Severity >= minSeverity);
 
         return await query
             .OrderByDescending(a => a.DetectedAtUtc)
+            .ToListAsync();
+    }
+
+    public async Task<List<Anomaly>> GetByTimesheetIdAsync(Guid timesheetId)
+    {
+        return await _context.Anomalies
+            .Where(a => a.TimesheetId == timesheetId)
             .ToListAsync();
     }
 }
