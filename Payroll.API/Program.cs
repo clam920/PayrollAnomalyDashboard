@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Payroll.Application.Commands;
 using Payroll.Application.Interfaces;
+using Payroll.Application.Queries;
+using Payroll.Domain.Enums;
 using Payroll.Domain.Services;
 using Payroll.Infrastructure.Data;
 using Payroll.Infrastructure.Repositories;
@@ -22,7 +24,6 @@ builder.Services.AddScoped<IAnomalyRepository, AnomalyRepository>();
 builder.Services.AddSingleton<IAnomalyDetectionService, TimesheetAnomalyDetector>();
 
 // 3. Register MediatR
-// This tells MediatR to scan the assembly (project) where SubmitTimesheetCommand lives and register all handlers
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(SubmitTimesheetCommand).Assembly));
 
 // 4. Add Swagger for easy API testing
@@ -61,23 +62,40 @@ app.MapPost("/api/employees", async (CreateEmployeeCommand command, MediatR.IMed
     }
 });
 
+// GET /api/employees - list every employee (active and inactive)
+app.MapGet("/api/employees", async (MediatR.IMediator mediator) =>
+{
+    var employees = await mediator.Send(new GetEmployeesQuery());
+    return Results.Ok(employees);
+});
+
 // The Endpoint: POST /api/timesheets
 app.MapPost("/api/timesheets", async (SubmitTimesheetCommand command, MediatR.IMediator mediator) =>
 {
     try
     {
-        // Hand the command off to MediatR
         var result = await mediator.Send(command);
-        
-        // Return a 201 Created status with the new Id and anomaly count.
-        // e.g. { "timesheetId": "...", "anomalyCount": 1 }
         return Results.Created($"/api/timesheets/{result.TimesheetId}", result);
     }
     catch (ArgumentException ex)
     {
-        // If the Domain rules reject the data (e.g., negative hours), return a 400 Bad Request
         return Results.BadRequest(new { Error = ex.Message });
     }
+});
+
+// GET /api/timesheets?employeeId=... - employeeId is optional; omit it to list everyone's timesheets
+app.MapGet("/api/timesheets", async (Guid? employeeId, MediatR.IMediator mediator) =>
+{
+    var timesheets = await mediator.Send(new GetTimesheetsQuery(employeeId));
+    return Results.Ok(timesheets);
+});
+
+// GET /api/anomalies?minSeverity=... - minSeverity is optional (Info/Warning/Critical);
+// omit it to see every flagged anomaly regardless of severity.
+app.MapGet("/api/anomalies", async (AnomalySeverity? minSeverity, MediatR.IMediator mediator) =>
+{
+    var anomalies = await mediator.Send(new GetAnomaliesQuery(minSeverity));
+    return Results.Ok(anomalies);
 });
 
 app.Run();
