@@ -50,4 +50,45 @@ public class TimesheetTests
         // Assert
         Assert.Equal(TimesheetStatus.Submitted, timesheet.Status);
     }
+
+    [Fact]
+    public void Approve_SubmittedTimesheet_ChangesStatusToApproved()
+    {
+        var timesheet = new Timesheet(Guid.NewGuid(), DateTime.UtcNow.AddDays(-1), 8m);
+        timesheet.Submit();
+
+        timesheet.Approve();
+
+        Assert.Equal(TimesheetStatus.Approved, timesheet.Status);
+        Assert.Null(timesheet.ReviewNote);
+    }
+
+    [Fact]
+    public void Approve_WithReviewNote_StoresTheNote()
+    {
+        var timesheet = new Timesheet(Guid.NewGuid(), DateTime.UtcNow.AddDays(-1), 13m);
+        timesheet.Submit();
+
+        timesheet.Approve("Employee confirmed this was a legitimate double shift.");
+
+        Assert.Equal("Employee confirmed this was a legitimate double shift.", timesheet.ReviewNote);
+    }
+
+    [Fact]
+    public void Approve_DraftTimesheet_ThrowsInvalidOperationException()
+    {
+        var timesheet = new Timesheet(Guid.NewGuid(), DateTime.UtcNow.AddDays(-1), 8m);
+
+        Assert.Throws<InvalidOperationException>(() => timesheet.Approve());
+    }
+
+    [Fact]
+    public void Reject_ApprovedTimesheet_ThrowsInvalidOperationException()
+    {
+        var timesheet = new Timesheet(Guid.NewGuid(), DateTime.UtcNow.AddDays(-1), 8m);
+        timesheet.Submit();
+        timesheet.Approve();
+
+        Assert.Throws<InvalidOperationException>(() => timesheet.Reject());
+    }
 }
