@@ -18,6 +18,9 @@ public class Timesheet
     public DateTime WorkDate { get; private set; }
     public decimal HoursWorked { get; private set; }
     public TimesheetStatus Status { get; private set; }
+    // Captures why a reviewer approved/rejected this timesheet - most useful
+    // when the timesheet has flagged anomalies and a human is overriding them.
+    public string? ReviewNote { get; private set; }
 
     // Constructor enforces creation rules
     public Timesheet(Guid employeeId, DateTime workDate, decimal hoursWorked)
@@ -44,19 +47,25 @@ public class Timesheet
         Status = TimesheetStatus.Submitted;
     }
 
-    public void Approve()
+    // reviewNote is optional at the entity level - the *rule* that a flagged
+    // timesheet requires a note lives in the Application layer's
+    // ApproveTimesheetCommandHandler, since only that layer knows about
+    // Anomalies (Timesheet itself doesn't reference the Anomaly aggregate).
+    public void Approve(string? reviewNote = null)
     {
         if (Status != TimesheetStatus.Submitted)
             throw new InvalidOperationException("Timesheet must be submitted before approval.");
-            
+
+        ReviewNote = reviewNote;
         Status = TimesheetStatus.Approved;
     }
 
-    public void Reject()
+    public void Reject(string? reviewNote = null)
     {
         if (Status == TimesheetStatus.Approved)
             throw new InvalidOperationException("Cannot reject an already approved timesheet. A correcting ledger entry is required.");
-            
+
+        ReviewNote = reviewNote;
         Status = TimesheetStatus.Rejected;
     }
 }
