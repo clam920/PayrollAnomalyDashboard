@@ -9,7 +9,11 @@ namespace Payroll.Domain.Tests;
 
 public class TimesheetAnomalyDetectorTests
 {
-    private readonly TimesheetAnomalyDetector _detector = new();
+    // Existing tests below only assert Contains(...) for the anomaly type
+    // they care about, so a timesheet also tripping HighPayAmount (e.g. the
+    // 18-hour Critical case, at $25/hr) doesn't break them - they just don't
+    // check for its absence.
+    private readonly TimesheetAnomalyDetector _detector = new(new PayrollCalculationService());
     private readonly Employee _employee = new("Jane", "Doe", 25m);
 
     [Fact]
@@ -68,6 +72,29 @@ public class TimesheetAnomalyDetectorTests
         var result = _detector.Detect(_employee, newTimesheet, new[] { existing });
 
         Assert.DoesNotContain(result, a => a.Type == AnomalyType.DuplicateWorkDate);
+    }
+
+    [Fact]
+    public void Detect_PayAtOrAboveThreshold_FlagsHighPayAmount()
+    {
+        // $50/hr * 13 hours = 8*50 + 5*50*1.5 = 400 + 375 = 775, over the $500 threshold.
+        var highRateEmployee = new Employee("Alex", "Ng", 50m);
+        var timesheet = new Timesheet(highRateEmployee.Id, GetLastWeekday(), 13m);
+
+        var result = _detector.Detect(highRateEmployee, timesheet, Array.Empty<Timesheet>());
+
+        Assert.Contains(result, a => a.Type == AnomalyType.HighPayAmount && a.Severity == AnomalySeverity.Warning);
+    }
+
+    [Fact]
+    public void Detect_PayBelowThreshold_DoesNotFlagHighPayAmount()
+    {
+        // $25/hr * 8 hours = 200, well under the $500 threshold.
+        var timesheet = new Timesheet(_employee.Id, GetLastWeekday(), 8m);
+
+        var result = _detector.Detect(_employee, timesheet, Array.Empty<Timesheet>());
+
+        Assert.DoesNotContain(result, a => a.Type == AnomalyType.HighPayAmount);
     }
 
     [Fact]
