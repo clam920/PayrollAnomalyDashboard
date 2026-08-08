@@ -7,5 +7,6 @@ public enum AnomalyType
 {
     ExcessiveHours,
     DuplicateWorkDate,
-    WeekendWork
+    WeekendWork,
+    HighPayAmount
 }

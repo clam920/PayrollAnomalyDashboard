@@ -18,6 +18,20 @@ public class TimesheetAnomalyDetector : IAnomalyDetectionService
     private const decimal WarningHoursThreshold = 12m;
     private const decimal CriticalHoursThreshold = 16m;
 
+    // A single day's pay above this is worth a second look, regardless of
+    // whether it came from long hours or a high hourly rate.
+    private const decimal HighPayThreshold = 500m;
+
+    private readonly IPayrollCalculationService _payrollCalculationService;
+
+    // Depending on IPayrollCalculationService (not a concrete class) keeps
+    // this testable with a fake/mock calculator if the pay rules ever need
+    // to be swapped independently of the anomaly rules.
+    public TimesheetAnomalyDetector(IPayrollCalculationService payrollCalculationService)
+    {
+        _payrollCalculationService = payrollCalculationService;
+    }
+
     public IReadOnlyList<Anomaly> Detect(Employee employee, Timesheet timesheet, IEnumerable<Timesheet> recentTimesheets)
     {
         var anomalies = new List<Anomaly>();
@@ -25,6 +39,7 @@ public class TimesheetAnomalyDetector : IAnomalyDetectionService
         CheckExcessiveHours(timesheet, anomalies);
         CheckDuplicateWorkDate(timesheet, recentTimesheets, anomalies);
         CheckWeekendWork(timesheet, anomalies);
+        CheckHighPayAmount(employee, timesheet, anomalies);
 
         return anomalies;
     }
@@ -84,6 +99,21 @@ public class TimesheetAnomalyDetector : IAnomalyDetectionService
                 AnomalyType.WeekendWork,
                 AnomalySeverity.Info,
                 $"Hours logged on {timesheet.WorkDate:yyyy-MM-dd} fall on a {timesheet.WorkDate.DayOfWeek}."));
+        }
+    }
+
+    private void CheckHighPayAmount(Employee employee, Timesheet timesheet, List<Anomaly> anomalies)
+    {
+        var pay = _payrollCalculationService.Calculate(employee, timesheet);
+
+        if (pay.TotalPay >= HighPayThreshold)
+        {
+            anomalies.Add(new Anomaly(
+                timesheet.Id,
+                timesheet.EmployeeId,
+                AnomalyType.HighPayAmount,
+                AnomalySeverity.Warning,
+                $"Calculated pay of {pay.TotalPay:C} for {timesheet.WorkDate:yyyy-MM-dd} exceeds the {HighPayThreshold:C} threshold for a single day."));
         }
     }
 }
