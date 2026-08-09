@@ -10,6 +10,10 @@ using Payroll.Application.Exceptions;
 
 namespace Payroll.API.Middleware;
 
+// Centralizes exception -> HTTP status code mapping in one place, instead of
+// a try/catch block duplicated in every Program.cs endpoint. Registered as
+// the first thing in the pipeline (see Program.cs) so it wraps every
+// downstream request.
 public class ExceptionHandlingMiddleware
 {
     private readonly RequestDelegate _next;
@@ -29,6 +33,10 @@ public class ExceptionHandlingMiddleware
         }
         catch (ValidationException validationEx)
         {
+            // FluentValidation's ValidationException carries one or more
+            // field-level failures - worth a richer response shape than the
+            // single "Error" string used for everything else below, so the
+            // client can tell exactly which field(s) failed and why.
             _logger.LogWarning("Validation failed: {Errors}",
                 string.Join("; ", validationEx.Errors.Select(e => $"{e.PropertyName}: {e.ErrorMessage}")));
 
@@ -41,6 +49,9 @@ public class ExceptionHandlingMiddleware
         {
             var (statusCode, message) = MapException(ex);
 
+            // Anything we recognize (400/404/409) is an expected, handled
+            // outcome - log it at Warning. A genuinely unmapped exception
+            // (500) is unexpected and gets the full stack trace at Error.
             if (statusCode == StatusCodes.Status500InternalServerError)
                 _logger.LogError(ex, "Unhandled exception processing {Method} {Path}", context.Request.Method, context.Request.Path);
             else
@@ -57,10 +68,14 @@ public class ExceptionHandlingMiddleware
         NotFoundException => (StatusCodes.Status404NotFound, ex.Message),
         ArgumentException => (StatusCodes.Status400BadRequest, ex.Message),
         InvalidOperationException => (StatusCodes.Status409Conflict, ex.Message),
+        // Anything else is a bug, not a handled business-rule violation - the
+        // client gets a generic message rather than a raw exception message
+        // (which could leak internal detail), the real detail goes to logs.
         _ => (StatusCodes.Status500InternalServerError, "An unexpected error occurred.")
     };
 }
 
+// Small extension method for a clean one-liner in Program.cs.
 public static class ExceptionHandlingMiddlewareExtensions
 {
     public static IApplicationBuilder UseGlobalExceptionHandling(this IApplicationBuilder app)
