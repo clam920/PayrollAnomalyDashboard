@@ -1,7 +1,10 @@
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
+using Microsoft.Extensions.Logging;
+using Payroll.Application.Exceptions;
 using Payroll.Domain.Entities;
 using Payroll.Domain.Services;
 using Payroll.Application.Interfaces;
@@ -14,18 +17,21 @@ public class SubmitTimesheetCommandHandler : IRequestHandler<SubmitTimesheetComm
     private readonly IEmployeeRepository _employeeRepository;
     private readonly IAnomalyRepository _anomalyRepository;
     private readonly IAnomalyDetectionService _anomalyDetectionService;
+    private readonly ILogger<SubmitTimesheetCommandHandler> _logger;
 
     // Dependency Injection: The .NET engine will automatically provide the database connection here
     public SubmitTimesheetCommandHandler(
     ITimesheetRepository timesheetRepository,
     IEmployeeRepository employeeRepository,
     IAnomalyRepository anomalyRepository,
-    IAnomalyDetectionService anomalyDetectionService)
+    IAnomalyDetectionService anomalyDetectionService,
+    ILogger<SubmitTimesheetCommandHandler> logger)
     {
         _timesheetRepository = timesheetRepository;
         _employeeRepository = employeeRepository;
         _anomalyRepository = anomalyRepository;
         _anomalyDetectionService = anomalyDetectionService;
+        _logger = logger;
     }
 
     public async Task<SubmitTimesheetResult> Handle(SubmitTimesheetCommand request, CancellationToken cancellationToken)
@@ -57,6 +63,14 @@ public class SubmitTimesheetCommandHandler : IRequestHandler<SubmitTimesheetComm
         {
             await _anomalyRepository.AddRangeAsync(anomalies);
             await _anomalyRepository.SaveChangesAsync();
+
+            // Warning level, not Error: a flagged timesheet isn't a bug in the
+            // app, it's exactly the signal the app exists to produce. Logging
+            // it means the pattern shows up in log-based alerting/dashboards
+            // even before anyone opens the GET /api/anomalies endpoint.
+            _logger.LogWarning(
+                "Timesheet {TimesheetId} for employee {EmployeeId} flagged {AnomalyCount} anomaly(ies): {AnomalyTypes}",
+                timesheet.Id, employee.Id, anomalies.Count, string.Join(", ", anomalies.Select(a => a.Type)));
         }
 
         // 5. Return the Id plus how many anomalies were flagged, so the API
