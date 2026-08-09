@@ -19,7 +19,7 @@ public class RejectTimesheetCommandHandler : IRequestHandler<RejectTimesheetComm
     {
         var timesheet = await _timesheetRepository.GetByIdAsync(request.TimesheetId);
         if (timesheet is null)
-            throw new ArgumentException("Timesheet not found.");
+            throw new NotFoundException("Timesheet not found.");
 
         timesheet.Reject(request.Reason);
         await _timesheetRepository.SaveChangesAsync();

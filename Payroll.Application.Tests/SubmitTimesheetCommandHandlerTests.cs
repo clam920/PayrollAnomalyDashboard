@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Payroll.Application.Commands;
+using Payroll.Application.Exceptions;
 using Payroll.Application.Interfaces;
 using Payroll.Domain.Entities;
 using Payroll.Domain.Enums;
@@ -26,18 +28,24 @@ public class SubmitTimesheetCommandHandlerTests
             _timesheetRepository.Object,
             _employeeRepository.Object,
             _anomalyRepository.Object,
-            _anomalyDetectionService.Object);
+            _anomalyDetectionService.Object,
+            // NullLogger: these tests aren't testing what gets logged, just
+            // that the handler works - a real Mock<ILogger<T>> would only
+            // add setup noise here with nothing to assert against.
+            NullLogger<SubmitTimesheetCommandHandler>.Instance);
     }
 
     [Fact]
-    public async Task Handle_EmployeeDoesNotExist_ThrowsArgumentException()
+    public async Task Handle_EmployeeDoesNotExist_ThrowsNotFoundException()
     {
         _employeeRepository.Setup(r => r.GetByIdAsync(It.IsAny<Guid>()))
             .ReturnsAsync((Employee?)null);
 
         var command = new SubmitTimesheetCommand(Guid.NewGuid(), DateTime.UtcNow.AddDays(-1), 8m);
 
-        await Assert.ThrowsAsync<ArgumentException>(() => _handler.Handle(command, CancellationToken.None));
+        await Assert.ThrowsAsync<NotFoundException>(() => _handler.Handle(command, CancellationToken.None));
+
+        // Nothing should have been persisted for a request that fails validation this early.
         _timesheetRepository.Verify(r => r.AddAsync(It.IsAny<Timesheet>()), Times.Never);
     }
 
@@ -63,7 +71,7 @@ public class SubmitTimesheetCommandHandlerTests
             .ReturnsAsync(new List<Timesheet>());
         _anomalyDetectionService
             .Setup(s => s.Detect(It.IsAny<Employee>(), It.IsAny<Timesheet>(), It.IsAny<IEnumerable<Timesheet>>()))
-            .Returns(new List<Anomaly>());
+            .Returns(new List<Anomaly>()); // empty = "nothing flagged"
 
         var command = new SubmitTimesheetCommand(employee.Id, DateTime.UtcNow.AddDays(-1), 8m);
 
@@ -86,6 +94,8 @@ public class SubmitTimesheetCommandHandlerTests
             .Setup(s => s.Detect(It.IsAny<Employee>(), It.IsAny<Timesheet>(), It.IsAny<IEnumerable<Timesheet>>()))
             .Returns((Employee _, Timesheet t, IEnumerable<Timesheet> _) =>
             {
+                // Build the fake anomaly using the real Timesheet the handler
+                // created, so it reads naturally rather than using a random Guid.
                 var anomaly = new Anomaly(t.Id, employee.Id, AnomalyType.ExcessiveHours, AnomalySeverity.Warning, "test anomaly");
                 detectedAnomalies.Add(anomaly);
                 return detectedAnomalies;

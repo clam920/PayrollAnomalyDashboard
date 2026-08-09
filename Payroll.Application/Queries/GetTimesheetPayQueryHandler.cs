@@ -27,11 +27,11 @@ public class GetTimesheetPayQueryHandler : IRequestHandler<GetTimesheetPayQuery,
     {
         var timesheet = await _timesheetRepository.GetByIdAsync(request.TimesheetId);
         if (timesheet is null)
-            throw new ArgumentException("Timesheet not found.");
+            throw new NotFoundException("Timesheet not found.");
 
         var employee = await _employeeRepository.GetByIdAsync(timesheet.EmployeeId);
         if (employee is null)
-            throw new ArgumentException("Employee for this timesheet no longer exists.");
+            throw new NotFoundException("Employee for this timesheet no longer exists.");
 
         var pay = _payrollCalculationService.Calculate(employee, timesheet);
 

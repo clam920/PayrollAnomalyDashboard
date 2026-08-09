@@ -24,7 +24,7 @@ public class ApproveTimesheetCommandHandler : IRequestHandler<ApproveTimesheetCo
     {
         var timesheet = await _timesheetRepository.GetByIdAsync(request.TimesheetId);
         if (timesheet is null)
-            throw new ArgumentException("Timesheet not found.");
+            throw new NotFoundException("Timesheet not found.");
 
         var anomalies = await _anomalyRepository.GetByTimesheetIdAsync(request.TimesheetId);
         if (anomalies.Count > 0 && string.IsNullOrWhiteSpace(request.OverrideReason))

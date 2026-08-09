@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Payroll.Application.Commands;
+using Payroll.Application.Exceptions;
 using Payroll.Application.Interfaces;
 using Payroll.Domain.Entities;
 using Payroll.Domain.Enums;
@@ -19,7 +21,10 @@ public class ApproveTimesheetCommandHandlerTests
 
     public ApproveTimesheetCommandHandlerTests()
     {
-        _handler = new ApproveTimesheetCommandHandler(_timesheetRepository.Object, _anomalyRepository.Object);
+        _handler = new ApproveTimesheetCommandHandler(
+            _timesheetRepository.Object,
+            _anomalyRepository.Object,
+            NullLogger<ApproveTimesheetCommandHandler>.Instance);
     }
 
     private static Timesheet CreateSubmittedTimesheet()
@@ -30,13 +35,13 @@ public class ApproveTimesheetCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_TimesheetNotFound_ThrowsArgumentException()
+    public async Task Handle_TimesheetNotFound_ThrowsNotFoundException()
     {
         _timesheetRepository.Setup(r => r.GetByIdAsync(It.IsAny<Guid>())).ReturnsAsync((Timesheet?)null);
 
         var command = new ApproveTimesheetCommand(Guid.NewGuid());
 
-        await Assert.ThrowsAsync<ArgumentException>(() => _handler.Handle(command, CancellationToken.None));
+        await Assert.ThrowsAsync<NotFoundException>(() => _handler.Handle(command, CancellationToken.None));
     }
 
     [Fact]

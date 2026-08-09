@@ -32,7 +32,7 @@ public class SubmitTimesheetCommandHandler : IRequestHandler<SubmitTimesheetComm
     {
         var employee = await _employeeRepository.GetByIdAsync(request.EmployeeId);
         if (employee is null)
-            throw new ArgumentException("Employee not found.");
+            throw new NotFoundException("Employee not found.");
         if (!employee.IsActive)
             throw new ArgumentException("Cannot submit timesheet for an inactive employee.");
         
