@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
+using Payroll.Application.Exceptions;
 using Payroll.Application.Interfaces;
 
 namespace Payroll.Application.Commands;

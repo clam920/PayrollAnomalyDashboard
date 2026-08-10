@@ -162,6 +162,16 @@ try
         return Results.NoContent();
     });
 
+    // GET /api/dashboard/summary?topEmployeeCount=... - total anomaly count,
+    // a breakdown by severity and by type, and a leaderboard of the most-
+    // flagged employees (topEmployeeCount defaults to 5 if omitted). This is
+    // the aggregate view the "Dashboard" half of the app's name refers to.
+    app.MapGet("/api/dashboard/summary", async (int? topEmployeeCount, MediatR.IMediator mediator) =>
+    {
+        var summary = await mediator.Send(new GetDashboardSummaryQuery(topEmployeeCount ?? 5));
+        return Results.Ok(summary);
+    });
+    
     app.Run();
 }
 catch (Exception ex)
