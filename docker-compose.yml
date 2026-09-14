@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: payroll-postgres
+    environment:
+      POSTGRES_DB: payroll
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      # Named volume so data survives `docker compose down` (but not
+      # `docker compose down -v`) - without this, every container
+      # restart would start from an empty database.
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: payroll-api
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      # Overrides appsettings.json's DefaultConnection - "postgres" here is
+      # the service name above, which Docker's internal DNS resolves to the
+      # postgres container's IP. This wouldn't work outside Docker, which is
+      # exactly why the connection string lives in config rather than code.
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=payroll;Username=postgres;Password=postgres"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

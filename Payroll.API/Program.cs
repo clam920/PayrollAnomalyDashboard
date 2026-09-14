@@ -33,9 +33,11 @@ try
     // provider - no other code needs to change for this to take effect.
     builder.Host.UseSerilog();
 
-    // 1. Configure the SQLite Database
+    // 1. Configure the PostgreSQL database. Connection string comes from
+    // configuration (appsettings.json / environment variables), not a
+    // hardcoded literal - see ConnectionStrings:DefaultConnection.
     builder.Services.AddDbContext<AppDbContext>(options =>
-        options.UseSqlite("Data Source=payroll.db"));
+        options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
     // 2. Register the Repository (Scoped means one instance per HTTP request)
     builder.Services.AddScoped<ITimesheetRepository, TimesheetRepository>();
@@ -68,11 +70,17 @@ try
 
     var app = builder.Build();
 
-    // 5. Ensure the database is created (Do not use this in production, but great for portfolios!)
+    // 5. Apply any pending EF Core migrations on startup. This replaces the
+    // old EnsureCreated() call: EnsureCreated() builds a schema straight from
+    // the current model with no history and no ability to evolve it later -
+    // Migrate() applies the ordered set of migration files in Migrations/,
+    // which is what makes schema changes trackable and repeatable across
+    // environments (dev machine, CI, a real deployment) instead of a
+    // "just delete the .db file" workaround.
     using (var scope = app.Services.CreateScope())
     {
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        dbContext.Database.EnsureCreated();
+        dbContext.Database.Migrate();
     }
 
     // Logs one line per request (method, path, status code, elapsed time) -
