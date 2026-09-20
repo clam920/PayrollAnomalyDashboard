@@ -198,3 +198,9 @@ finally
 // shapes, not part of the MediatR command contract.
 record ApproveTimesheetRequest(string? OverrideReason);
 record RejectTimesheetRequest(string? Reason);
+
+// Top-level statements generate an internal Program class by default - a
+// different test assembly (Payroll.IntegrationTests) can't reference an
+// internal type, so this explicit partial declaration is what makes
+// WebApplicationFactory<Program> possible there.
+public partial class Program { }
