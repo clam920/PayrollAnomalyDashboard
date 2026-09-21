@@ -66,6 +66,7 @@ public class ExceptionHandlingMiddleware
     private static (int StatusCode, string Message) MapException(Exception ex) => ex switch
     {
         NotFoundException => (StatusCodes.Status404NotFound, ex.Message),
+        UnauthorizedAccessException => (StatusCodes.Status401Unauthorized, ex.Message),
         ArgumentException => (StatusCodes.Status400BadRequest, ex.Message),
         InvalidOperationException => (StatusCodes.Status409Conflict, ex.Message),
         // Anything else is a bug, not a handled business-rule violation - the

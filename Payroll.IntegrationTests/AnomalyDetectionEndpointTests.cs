@@ -7,14 +7,22 @@ using Xunit;
 
 namespace Payroll.IntegrationTests;
 
-public class AnomalyDetectionEndpointTests : IClassFixture<CustomWebApplicationFactory>
+public class AnomalyDetectionEndpointTests : IClassFixture<CustomWebApplicationFactory>, IAsyncLifetime
 {
-    private readonly HttpClient _client;
+    private readonly CustomWebApplicationFactory _factory;
+    private HttpClient _client = null!;
 
     public AnomalyDetectionEndpointTests(CustomWebApplicationFactory factory)
     {
-        _client = factory.CreateClient();
+        _factory = factory;
     }
+
+    public async Task InitializeAsync()
+    {
+        _client = await _factory.CreateAuthenticatedClientAsync("manager", "Manager123!");
+    }
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task SubmittingAnExcessiveHoursTimesheet_IsFlaggedAndVisibleViaTheAnomaliesEndpoint()

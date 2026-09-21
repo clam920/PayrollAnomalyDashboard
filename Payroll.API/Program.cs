@@ -1,16 +1,22 @@
 using Microsoft.EntityFrameworkCore;
 using FluentValidation;
 using MediatR;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.IdentityModel.Tokens;
 using Payroll.API.Middleware;
+using Payroll.Application.Auth;
 using Payroll.Application.Behaviors;
 using Payroll.Application.Commands;
 using Payroll.Application.Interfaces;
 using Payroll.Application.Queries;
 using Payroll.Domain.Enums;
 using Payroll.Domain.Services;
+using Payroll.Infrastructure.Auth;
 using Payroll.Infrastructure.Data;
 using Payroll.Infrastructure.Repositories;
 using Serilog;
+using System.Text;
 
 // Bootstrap logger: exists before the DI container is built, so it can
 // capture anything that goes wrong during startup itself (bad config,
@@ -66,7 +72,73 @@ try
 
     // 4. Add Swagger for easy API testing
     builder.Services.AddEndpointsApiExplorer();
-    builder.Services.AddSwaggerGen();
+    builder.Services.AddSwaggerGen(options =>
+    {
+        options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+        {
+            Name = "Authorization",
+            Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+            Scheme = "Bearer",
+            BearerFormat = "JWT",
+            In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+            Description = "Paste just the token - Swagger adds the 'Bearer ' prefix automatically. Get one from POST /api/auth/login."
+        });
+
+        options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+        {
+            {
+                new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+                {
+                    Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                    {
+                        Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                        Id = "Bearer"
+                    }
+                },
+                Array.Empty<string>()
+            }
+        });
+    });
+    
+    // 5. Configure JWT authentication + role-based authorization.
+    // JwtSettings is bound manually (not via IOptions<T>) and registered as
+    // a plain singleton, so JwtTokenGenerator can take it as an ordinary
+    // constructor dependency without an extra package reference.
+    var jwtSettings = builder.Configuration.GetSection("Jwt").Get<JwtSettings>()
+        ?? throw new InvalidOperationException("Missing 'Jwt' configuration section.");
+    builder.Services.AddSingleton(jwtSettings);
+
+    builder.Services
+        .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(options =>
+        {
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidateAudience = true,
+                ValidateLifetime = true,
+                ValidateIssuerSigningKey = true,
+                ValidIssuer = jwtSettings.Issuer,
+                ValidAudience = jwtSettings.Audience,
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.SigningKey))
+            };
+        });
+
+    // Named policy rather than repeating RequireRole(Roles.Manager) at every
+    // endpoint - if the "who can approve/reject" rule ever needs a second
+    // role, it changes in exactly one place.
+    builder.Services.AddAuthorization(options =>
+    {
+        options.AddPolicy("ManagerOnly", policy => policy.RequireRole(Roles.Manager));
+    });
+
+    // 5b. Register the auth-related services. IPasswordHasher<AppUser> comes
+    // from the ASP.NET Core shared framework (Sdk.Web projects get it for
+    // free) - PasswordHasher<T> itself needs no database or external state,
+    // so Singleton is safe here same as the domain services above.
+    builder.Services.AddSingleton<IPasswordHasher<AppUser>, PasswordHasher<AppUser>>();
+    builder.Services.AddSingleton<IUserStore, InMemoryUserStore>();
+    builder.Services.AddSingleton<IJwtTokenGenerator, JwtTokenGenerator>();
 
     var app = builder.Build();
 
@@ -103,22 +175,44 @@ try
 
     app.UseHttpsRedirection();
 
+    // Must come after UseHttpsRedirection and before any endpoint mapping.
+    // Authentication figures out WHO is calling (validates the JWT,
+    // populates HttpContext.User); Authorization then checks WHETHER that
+    // identity is allowed to hit the specific endpoint - order between the
+    // two matters, you can't authorize an identity that hasn't been
+    // established yet.
+    app.UseAuthentication();
+    app.UseAuthorization();
+
     // --- API ENDPOINTS ---
+    // POST /api/auth/login - the only endpoint that's intentionally
+    // anonymous; every endpoint below requires a valid Bearer token.
+    app.MapPost("/api/auth/login", async (LoginCommand command, MediatR.IMediator mediator) =>
+    {
+        var result = await mediator.Send(command);
+        return Results.Ok(result);
+    });
+
     // No more try/catch here - ArgumentException, NotFoundException, and
     // InvalidOperationException thrown by any handler are now caught once, in
     // ExceptionHandlingMiddleware, and mapped to the right status code there.
+    //
+    // Authorization split: creating employees, approving/rejecting, and the
+    // dashboard summary are Manager-only (HR/admin-style actions); everything
+    // else just requires SOME authenticated user (.RequireAuthorization()
+    // with no policy name), whether Employee or Manager.
     app.MapPost("/api/employees", async (CreateEmployeeCommand command, MediatR.IMediator mediator) =>
     {
         var employeeId = await mediator.Send(command);
         return Results.Created($"/api/employees/{employeeId}", new { Id = employeeId });
-    });
+    }).RequireAuthorization("ManagerOnly");
 
     // GET /api/employees - list every employee (active and inactive)
     app.MapGet("/api/employees", async (MediatR.IMediator mediator) =>
     {
         var employees = await mediator.Send(new GetEmployeesQuery());
         return Results.Ok(employees);
-    });
+    }).RequireAuthorization();
 
     // The Endpoint: POST /api/timesheets
     app.MapPost("/api/timesheets", async (SubmitTimesheetCommand command, MediatR.IMediator mediator) =>
@@ -128,14 +222,14 @@ try
         // Return a 201 Created status with the new Id and anomaly count.
         // e.g. { "timesheetId": "...", "anomalyCount": 1 }
         return Results.Created($"/api/timesheets/{result.TimesheetId}", result);
-    });
+    }).RequireAuthorization();
 
     // GET /api/timesheets?employeeId=... - employeeId is optional; omit it to list everyone's timesheets
     app.MapGet("/api/timesheets", async (Guid? employeeId, MediatR.IMediator mediator) =>
     {
         var timesheets = await mediator.Send(new GetTimesheetsQuery(employeeId));
         return Results.Ok(timesheets);
-    });
+    }).RequireAuthorization();
 
     // GET /api/anomalies?minSeverity=... - minSeverity is optional (Info/Warning/Critical);
     // omit it to see every flagged anomaly regardless of severity.
@@ -143,7 +237,7 @@ try
     {
         var anomalies = await mediator.Send(new GetAnomaliesQuery(minSeverity));
         return Results.Ok(anomalies);
-    });
+    }).RequireAuthorization();
 
     // GET /api/timesheets/{id}/pay - regular/overtime hours and pay for one timesheet,
     // calculated on the fly rather than stored (so it always reflects the
@@ -152,34 +246,36 @@ try
     {
         var pay = await mediator.Send(new GetTimesheetPayQuery(id));
         return Results.Ok(pay);
-    });
+    }).RequireAuthorization();
 
-    // PUT /api/timesheets/{id}/approve - body is optional; only required when the
-    // timesheet has flagged anomalies, in which case the handler rejects the
-    // request with a 409 Conflict until an overrideReason is supplied.
+    // PUT /api/timesheets/{id}/approve - Manager only. Body is optional;
+    // only required when the timesheet has flagged anomalies, in which case
+    // the handler rejects the request with a 409 Conflict until an
+    // overrideReason is supplied.
     app.MapPut("/api/timesheets/{id:guid}/approve", async (Guid id, ApproveTimesheetRequest? body, MediatR.IMediator mediator) =>
     {
         await mediator.Send(new ApproveTimesheetCommand(id, body?.OverrideReason));
         return Results.NoContent();
-    });
+    }).RequireAuthorization("ManagerOnly");
 
-    // PUT /api/timesheets/{id}/reject - body (and the reason inside it) is optional.
+    // PUT /api/timesheets/{id}/reject - Manager only. Body (and the reason inside it) is optional.
     app.MapPut("/api/timesheets/{id:guid}/reject", async (Guid id, RejectTimesheetRequest? body, MediatR.IMediator mediator) =>
     {
         await mediator.Send(new RejectTimesheetCommand(id, body?.Reason));
         return Results.NoContent();
-    });
+    }).RequireAuthorization("ManagerOnly");
 
-    // GET /api/dashboard/summary?topEmployeeCount=... - total anomaly count,
-    // a breakdown by severity and by type, and a leaderboard of the most-
-    // flagged employees (topEmployeeCount defaults to 5 if omitted). This is
-    // the aggregate view the "Dashboard" half of the app's name refers to.
+    // GET /api/dashboard/summary?topEmployeeCount=... - Manager only. Total
+    // anomaly count, a breakdown by severity and by type, and a leaderboard
+    // of the most-flagged employees (topEmployeeCount defaults to 5 if
+    // omitted). This is the aggregate view the "Dashboard" half of the
+    // app's name refers to - treated as a reporting/management view.
     app.MapGet("/api/dashboard/summary", async (int? topEmployeeCount, MediatR.IMediator mediator) =>
     {
         var summary = await mediator.Send(new GetDashboardSummaryQuery(topEmployeeCount ?? 5));
         return Results.Ok(summary);
-    });
-    
+    }).RequireAuthorization("ManagerOnly");
+
     app.Run();
 }
 catch (Exception ex)
