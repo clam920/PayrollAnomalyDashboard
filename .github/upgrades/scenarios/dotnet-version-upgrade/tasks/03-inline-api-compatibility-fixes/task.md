@@ -1,0 +1,16 @@
+# 03-inline-api-compatibility-fixes: Resolve net10.0 API and behavior changes
+
+Apply all required compatibility fixes inline across Payroll.API, Payroll.Infrastructure, and Payroll.IntegrationTests. Address the assessed JWT bearer registration and token-generation incompatibilities, configuration binder usage, JwtBearer options and scheme APIs, and the HttpContent behavioral changes; preserve authentication, token, configuration, persistence, and endpoint behavior while updating affected call sites.
+
+Use the assessment's detailed API findings as the research starting point and verify the related existing unit and integration tests continue to express the intended contracts. No stubs or deferred API-resolution subtasks are planned because Fix Inline was confirmed.
+
+## Research Findings
+
+- Confirmed scope: `Payroll.API`, `Payroll.Infrastructure`, and `Payroll.IntegrationTests`; all are SDK-style projects targeting `net10.0` and are part of the dependency chain `Payroll.Infrastructure -> Payroll.API -> Payroll.IntegrationTests`.
+- Confirmed source anchors: `Payroll.API/Program.cs` contains the OpenAPI security model plus JWT configuration; `Payroll.Infrastructure/Auth/JwtTokenGenerator.cs` constructs and serializes JWTs; `Payroll.IntegrationTests/CustomWebApplicationFactory.cs` performs the login request and reads its `HttpContent` as JSON. Endpoint tests read response JSON through `ReadFromJsonAsync`.
+- Assessment findings: API has one binary and five source incompatibilities, Infrastructure has five binary incompatibilities, and IntegrationTests has six `HttpContent` behavioral findings. The aggregate API findings identify `OpenApiSecurityScheme`, `JwtBearerDefaults`/`AddJwtBearer`, `JwtBearerOptions.TokenValidationParameters`, configuration binder `Get<T>`, `JwtSecurityToken` construction, `JwtSecurityTokenHandler`, and `HttpContent` usage as the affected surfaces.
+- Package state confirmed in `Directory.Packages.props`: `Microsoft.AspNetCore.Authentication.JwtBearer`, `Microsoft.AspNetCore.OpenApi`, `Microsoft.AspNetCore.Mvc.Testing`, `Microsoft.EntityFrameworkCore.Design`, `Microsoft.Extensions.Identity.Core` are already at `10.0.12`; `System.IdentityModel.Tokens.Jwt` is `8.2.0`, and no package replacement is required by this task.
+- Existing behavior to preserve: JWT issuer/audience/lifetime/signing-key validation, role claims and configured expiry, login response deserialization, and integration-test authenticated-client setup. No `// STUB:` markers were found in the scoped source projects.
+- Decomposition verdict: atomic. The changes are a single compatibility slice across tightly coupled host/auth/token/test call sites; no stub resolution, package replacement, independent project migration, or separate decision point is present. Evaluated execution guidance `execution.md`, breakdown hints `common.md`, `framework-web-migration.md`, `framework-migration.md`, and `test.md`.
+
+**Done when**: All flagged binary and source incompatibilities are resolved without compatibility stubs, affected behavioral call sites compile against net10.0 packages, and existing focused tests pass for the changed authentication, infrastructure, and endpoint paths.
